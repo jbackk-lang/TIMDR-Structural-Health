@@ -21,6 +21,13 @@ python timdr_shm.py lines2   pietra.npz --fs 322.58 --band-a 45,62 --band-b 64,8
 python timdr_shm.py regime   emisja.npz --fs 5e6 --band 100e3,900e3
 ```
 
+## Dashboard
+
+`run.bat` (Windows) albo `python dashboard.py` → http://127.0.0.1:8765. Tylko biblioteka standardowa + numpy/scipy,
+serwer słucha wyłącznie na 127.0.0.1. Zakładki: most (kotwica modalna przed/po wzmocnieniu), śruba (linie nieliniowości
+przy luzowaniu), uderzenia (reżim cząsteczka/pakiet/fala) — na danych syntetycznych; „Mój plik CSV” — analiza własnego
+zapisu (kolumny = kanały); „Walidacja” — tabela wyników, także negatywnych.
+
 ## Walidacja (pre-rejestrowana w GIA-TIMDR, jedno uruchomienie, także wyniki negatywne)
 
 | Obiekt | Wynik TIMDR | Odniesienie | Werdykt |

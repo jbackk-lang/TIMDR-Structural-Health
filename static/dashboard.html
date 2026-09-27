@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TIMDR Structural Health</title>
+<style>
+:root{color-scheme:light;
+  --page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;
+  --border:rgba(11,11,11,.10);--s1:#2a78d6;--s2:#eb6834;--good:#0ca30c;--critical:#d03b3b;--warn:#fab219}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){color-scheme:dark;
+  --page:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;
+  --border:rgba(255,255,255,.10);--s1:#3987e5;--s2:#d95926}}
+:root[data-theme="dark"]{color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#898781;
+  --grid:#2c2c2a;--axis:#383835;--border:rgba(255,255,255,.10);--s1:#3987e5;--s2:#d95926}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:20px 24px 8px;max-width:1200px;margin:0 auto}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--ink2);margin:0}
+nav{display:flex;gap:8px;flex-wrap:wrap;padding:12px 24px;max-width:1200px;margin:0 auto}
+nav button{background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit}
+nav button[aria-selected="true"]{border-color:var(--s1);box-shadow:inset 0 -2px 0 var(--s1)}
+main{max-width:1200px;margin:0 auto;padding:0 24px 40px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:12px 0}
+.card h2{font-size:15px;margin:0 0 4px}.card p.desc{color:var(--ink2);margin:0 0 12px}
+.tiles{display:flex;gap:12px;flex-wrap:wrap}
+.tile{flex:1 1 150px;border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.tile .v{font-size:24px;font-weight:600}.tile .l{color:var(--ink2);font-size:12px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--grid);vertical-align:top}
+th{color:var(--ink2);font-weight:600;font-size:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap}
+.dot{width:10px;height:10px;border-radius:50%}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:6px 9px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);display:none;white-space:nowrap}
+.tip .row{display:flex;align-items:center;gap:6px}.tip .key{width:12px;height:2px}.tip b{font-weight:600}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--ink2);font-size:12px;margin:0 0 6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}.legend i{width:14px;height:2px;display:inline-block}
+form.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:end}
+label{display:flex;flex-direction:column;gap:4px;color:var(--ink2);font-size:12px}
+input,select{font:inherit;padding:7px 8px;border:1px solid var(--border);border-radius:8px;background:var(--page);color:var(--ink)}
+button.go{background:var(--s1);color:#fff;border:0;border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer}
+.err{color:var(--critical);font-weight:600}
+.note{color:var(--muted);font-size:12px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>TIMDR Structural Health</h1>
+  <p class="sub">Monitorowanie konstrukcji: kotwica modalna, linie nieliniowości, reżim fala / cząsteczka. Wszystko liczone lokalnie.</p>
+</header>
+<nav role="tablist" id="tabs">
+  <button role="tab" data-t="most" aria-selected="true">Most: wzmocnienie</button>
+  <button role="tab" data-t="sruba">Śruba: luzowanie</button>
+  <button role="tab" data-t="uderzenia">Uderzenia: reżim</button>
+  <button role="tab" data-t="plik">Mój plik CSV</button>
+  <button role="tab" data-t="walidacja">Walidacja</button>
+</nav>
+<main>
+  <section id="p-most"></section>
+  <section id="p-sruba" class="hidden"></section>
+  <section id="p-uderzenia" class="hidden"></section>
+  <section id="p-plik" class="hidden">
+    <div class="card">
+      <h2>Analiza własnego pliku</h2>
+      <p class="desc">CSV z liczbami, kolumny = kanały (bez nagłówka). Plik zostaje na tym komputerze — serwer działa tylko pod 127.0.0.1.</p>
+      <form class="grid" id="f">
+        <label>Plik CSV<input type="file" id="file" accept=".csv,.txt" required></label>
+        <label>Próbkowanie fs [Hz]<input id="fs" type="number" step="any" value="100" required></label>
+        <label>Analiza<select id="an">
+          <option value="modes">Kotwica modalna (drgania otoczenia)</option>
+          <option value="lines">Linie przy wymuszeniu (znana częstotliwość)</option>
+          <option value="lines2">Linie przy dwóch modach (wymuszenie losowe)</option>
+          <option value="regime">Reżim: cząsteczka / fala</option></select></label>
+        <label id="l-anchors">Kotwice modelu [Hz, po przecinku]<input id="anchors" value="2.58,2.92,5.32"></label>
+        <label id="l-ba" class="hidden">Pasmo modu A [Hz]<input id="ba" value="45,62"></label>
+        <label id="l-bb" class="hidden">Pasmo modu B [Hz]<input id="bb" value="64,80"></label>
+        <label id="l-band" class="hidden">Pasmo obwiedni [Hz]<input id="band" value="3000,5000"></label>
+        <button class="go" type="submit">Analizuj</button>
+      </form>
+      <div id="out"></div>
+    </div>
+  </section>
+  <section id="p-walidacja" class="hidden"></section>
+</main>
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, attrs = {}, text) => { const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (text !== undefined) e.textContent = text; return e; };
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (v, d = 3) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString("pl-PL");
+
+function card(parent, title, desc) {
+  const c = el("div", { class: "card" }); c.append(el("h2", {}, title)); if (desc) c.append(el("p", { class: "desc" }, desc));
+  parent.append(c); return c;
+}
+function tiles(parent, items) {
+  const t = el("div", { class: "tiles" });
+  for (const it of items) { const d = el("div", { class: "tile" }); d.append(el("div", { class: "v" }, it.v), el("div", { class: "l" }, it.l)); t.append(d); }
+  parent.append(t);
+}
+
+/* Wykres liniowy: jedna os Y, cienkie linie 2px, siatka recesywna, crosshair + tooltip ze wszystkimi seriami. */
+function lineChart(parent, series, o = {}) {
+  const W = 900, H = o.h || 300, m = { l: 56, r: 16, t: 10, b: 40 };
+  const box = el("div", { class: "chart" }); const tip = el("div", { class: "tip" });
+  if (series.length > 1) { const lg = el("div", { class: "legend" });
+    for (const s of series) { const sp = el("span"); const i = el("i"); i.style.background = css(s.color); sp.append(i, document.createTextNode(s.name)); lg.append(sp); }
+    parent.append(lg); }
+  const xs = series.flatMap(s => s.x), ys = series.flatMap(s => s.y);
+  const x0 = o.xmin ?? Math.min(...xs), x1 = o.xmax ?? Math.max(...xs);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys); const pad = (y1 - y0) * 0.06 || 1; y0 -= pad; y1 += pad;
+  const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r), Y = v => H - m.b - (v - y0) / (y1 - y0) * (H - m.t - m.b);
+  const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", o.label || "wykres");
+  const add = (tag, a) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); svg.append(e); return e; };
+  const nice = (a, b, n) => { const st = Math.pow(10, Math.floor(Math.log10((b - a) / n))); const s = [1, 2, 5, 10].map(k => k * st).find(k => (b - a) / k <= n); const out = []; for (let v = Math.ceil(a / s) * s; v <= b + 1e-9; v += s) out.push(+v.toFixed(10)); return out; };
+  for (const v of nice(y0, y1, 5)) { add("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: css("--grid"), "stroke-width": 1 });
+    const t = add("text", { x: m.l - 8, y: Y(v) + 4, "text-anchor": "end", fill: css("--muted"), "font-size": 11 }); t.textContent = fmt(v, 2); }
+  for (const v of (o.xticks || nice(x0, x1, 8))) { const t = add("text", { x: X(v), y: H - m.b + 18, "text-anchor": "middle", fill: css("--muted"), "font-size": 11 }); t.textContent = o.xfmt ? o.xfmt(v) : fmt(v, 2); }
+  add("line", { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: css("--axis"), "stroke-width": 1 });
+  const xl = add("text", { x: (m.l + W - m.r) / 2, y: H - 6, "text-anchor": "middle", fill: css("--ink2"), "font-size": 12 }); xl.textContent = o.xlabel || "";
+  const yl = add("text", { x: 14, y: (m.t + H - m.b) / 2, transform: `rotate(-90 14 ${(m.t + H - m.b) / 2})`, "text-anchor": "middle", fill: css("--ink2"), "font-size": 12 }); yl.textContent = o.ylabel || "";
+  for (const mk of (o.markers || [])) { add("line", { x1: X(mk.x), x2: X(mk.x), y1: m.t, y2: H - m.b, stroke: css("--muted"), "stroke-width": 1, "stroke-dasharray": "3 4" });
+    const t = add("text", { x: X(mk.x) + 4, y: m.t + 12, fill: css("--ink2"), "font-size": 11 }); t.textContent = mk.label; }
+  for (const s of series) {
+    add("path", { d: s.x.map((v, i) => `${i ? "L" : "M"}${X(v).toFixed(1)},${Y(s.y[i]).toFixed(1)}`).join(""), fill: "none", stroke: css(s.color), "stroke-width": 2, "stroke-linejoin": "round" });
+    if (s.dots) for (let i = 0; i < s.x.length; i++) add("circle", { cx: X(s.x[i]), cy: Y(s.y[i]), r: 4.5, fill: css(s.color), stroke: css("--surface"), "stroke-width": 2 });
+  }
+  const hair = add("line", { y1: m.t, y2: H - m.b, stroke: css("--ink2"), "stroke-width": 1, visibility: "hidden" });
+  const hit = add("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent" });
+  const move = ev => { const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) / r.width * W;
+    const xv = x0 + (px - m.l) / (W - m.l - m.r) * (x1 - x0); const s0 = series[0];
+    let j = 0; for (let i = 1; i < s0.x.length; i++) if (Math.abs(s0.x[i] - xv) < Math.abs(s0.x[j] - xv)) j = i;
+    hair.setAttribute("x1", X(s0.x[j])); hair.setAttribute("x2", X(s0.x[j])); hair.setAttribute("visibility", "visible");
+    tip.replaceChildren(el("div", { class: "note" }, `${o.xlabel || "x"}: ${o.xfmt ? o.xfmt(s0.x[j]) : fmt(s0.x[j], 3)}`));
+    for (const s of series) { const row = el("div", { class: "row" }); const k = el("span", { class: "key" }); k.style.background = css(s.color);
+      row.append(k, el("b", {}, fmt(s.y[j], 3)), el("span", {}, s.name)); tip.append(row); }
+    tip.style.display = "block"; const tx = (X(s0.x[j]) / W) * r.width; tip.style.left = Math.min(tx + 12, r.width - tip.offsetWidth - 4) + "px"; tip.style.top = "8px"; };
+  hit.addEventListener("pointermove", move); hit.addEventListener("pointerleave", () => { tip.style.display = "none"; hair.setAttribute("visibility", "hidden"); });
+  box.append(svg, tip); parent.append(box);
+}
+
+function table(parent, head, rows) {
+  const t = el("table"); const tr = el("tr"); head.forEach(h => tr.append(el("th", {}, h))); t.append(tr);
+  for (const r of rows) { const row = el("tr"); r.forEach(c => { const td = el("td"); if (c instanceof Node) td.append(c); else td.textContent = c; row.append(td); }); t.append(row); }
+  parent.append(t);
+}
+function verdictBadge(v) {
+  const ok = v.startsWith("SUPPORTED"); const b = el("span", { class: "badge" }); const d = el("span", { class: "dot" });
+  d.style.background = css(ok ? "--good" : "--critical"); b.append(d, document.createTextNode((ok ? "✓ " : "✕ ") + v)); return b;
+}
+async function api(url, opt) { const r = await fetch(url, opt); const j = await r.json(); if (!r.ok) throw new Error(j.blad || r.status); return j; }
+
+async function showMost() {
+  const p = $("#p-most"); if (p.dataset.done) return; p.dataset.done = 1;
+  const d = await api("/api/demo?name=most");
+  const c = card(p, "Most: kotwica modalna przed i po wzmocnieniu (dane syntetyczne)", d.opis);
+  tiles(c, d.kotwice_modelu.map((a, i) => ({ v: (d.po[i] - d.przed[i] >= 0 ? "+" : "") + fmt(d.po[i] - d.przed[i], 3) + " Hz", l: `mod ${fmt(a, 2)} Hz: ${fmt(d.przed[i], 3)} → ${fmt(d.po[i], 3)}` })));
+  const c2 = card(p, "Widmo drgań (log, średnia z kanałów)", "Linie przerywane: kotwice modelu modalnego. Kotwica sama przesuwa się do szczytu (±4%).");
+  lineChart(c2, [{ name: "przed wzmocnieniem", color: "--s1", x: d.widmo_przed.f, y: d.widmo_przed.S },
+                 { name: "po wzmocnieniu", color: "--s2", x: d.widmo_po.f, y: d.widmo_po.S }],
+            { xlabel: "częstotliwość [Hz]", ylabel: "log10 widma", markers: d.kotwice_modelu.map(a => ({ x: a, label: fmt(a, 2) })), label: "widmo przed i po wzmocnieniu" });
+  table(c2, ["mod modelu [Hz]", "przed [Hz]", "po [Hz]", "zmiana [Hz]"], d.kotwice_modelu.map((a, i) => [fmt(a, 2), fmt(d.przed[i], 3), fmt(d.po[i], 3), fmt(d.po[i] - d.przed[i], 3)]));
+}
+async function showSruba() {
+  const p = $("#p-sruba"); if (p.dataset.done) return; p.dataset.done = 1;
+  const d = await api("/api/demo?name=sruba"); const c = card(p, "Śruba: linie przy kotwicy wymuszenia (dane syntetyczne)", d.opis);
+  const lv = d.poziomy; const xs = lv.map((_, i) => i);
+  lineChart(c, [{ name: "H = log((P(2f)+P(3f)) / P(f))", color: "--s1", x: xs, y: lv.map(r => r.H), dots: true }],
+            { xlabel: "moment dokręcenia [cNm]", ylabel: "H (nieliniowość)", xticks: xs, xfmt: v => String(lv[Math.round(v)].moment_cNm), label: "nieliniowość a luzowanie" });
+  table(c, ["moment [cNm]", "kotwica f0 [Hz]", "H"], lv.map(r => [String(r.moment_cNm), fmt(r.f0, 1), fmt(r.H, 2)]));
+  c.append(el("p", { class: "note" }, "Walidacja ORION-AE: H rośnie przy luzowaniu (ρ −0,85 / −0,64) — trend jest wiarygodny, dokładny poziom dokręcenia nie."));
+}
+async function showUderzenia() {
+  const p = $("#p-uderzenia"); if (p.dataset.done) return; p.dataset.done = 1;
+  const d = await api("/api/demo?name=uderzenia"); const c = card(p, "Reżim: cząsteczka / pakiet / fala (dane syntetyczne)", d.opis);
+  for (const r of d.przypadki) { c.append(el("h2", {}, `${r.nazwa}: ${r.uderzenia_na_s} uderzeń/s`));
+    tiles(c, [{ v: r.rezim, l: "reżim (D < 0,3 cząsteczka, D > 3 fala)" }, { v: fmt(r.D, 2), l: "D — gęstość zdarzeń" }, { v: fmt(r.P, 3), l: "P — cząsteczkowość (szum ≈ 0,2)" }]); }
+  c.append(el("p", { class: "note" }, "W budynku LANL i przy śrubie ORION-AE rzadkie zdarzenia były cząsteczkami, częste zlewały się w falę — wtedy droga prowadzi przez linie przy kotwicy modalnej."));
+}
+async function showWalidacja() {
+  const p = $("#p-walidacja"); if (p.dataset.done) return; p.dataset.done = 1;
+  const v = await api("/api/validation"); const c = card(p, "Walidacja pre-rejestrowana (GIA-TIMDR), także wyniki negatywne");
+  table(c, ["obiekt", "TIMDR", "odniesienie", "werdykt"], v.map(r => [r.obiekt, r.timdr, r.odniesienie, verdictBadge(r.werdykt)]));
+  c.append(el("p", { class: "note" }, "Działa: zmiany globalnej sztywności i nieliniowość kontaktu (trend). Nie działa: lokalne uszkodzenia połączeń przy wymuszeniu szumowym."));
+}
+const SHOW = { most: showMost, sruba: showSruba, uderzenia: showUderzenia, walidacja: showWalidacja, plik: async () => {} };
+function tab(t) {
+  for (const b of document.querySelectorAll("#tabs button")) b.setAttribute("aria-selected", b.dataset.t === t);
+  for (const s of document.querySelectorAll("main > section")) s.classList.toggle("hidden", s.id !== "p-" + t);
+  SHOW[t]().catch(e => { const s = $("#p-" + t); s.append(el("p", { class: "err" }, "Błąd: " + e.message)); });
+}
+$("#tabs").addEventListener("click", e => { if (e.target.dataset.t) tab(e.target.dataset.t); });
+
+const fields = { modes: ["l-anchors"], lines: [], lines2: ["l-ba", "l-bb"], regime: ["l-band"] };
+$("#an").addEventListener("change", () => { for (const id of ["l-anchors", "l-ba", "l-bb", "l-band"]) $("#" + id).classList.toggle("hidden", !fields[$("#an").value].includes(id)); });
+$("#f").addEventListener("submit", async e => {
+  e.preventDefault(); const out = $("#out"); out.replaceChildren(el("p", { class: "note" }, "Liczę…"));
+  try {
+    const csv = await $("#file").files[0].text();
+    const body = { csv, fs: +$("#fs").value, analysis: $("#an").value, anchors: $("#anchors").value, band_a: $("#ba").value, band_b: $("#bb").value, band: $("#band").value };
+    const r = await api("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    out.replaceChildren(); tiles(out, [{ v: String(r.kanaly), l: "kanały" }, { v: fmt(r.czas_s, 1) + " s", l: "długość zapisu" }]);
+    if (r.analiza === "modes") { tiles(out, r.kotwice_modelu.map((a, i) => ({ v: fmt(r.czestotliwosci[i], 3) + " Hz", l: `kotwica ${fmt(a, 2)} Hz · N_cyk ${r.wykonalnosc_N_cyk[i]}` })));
+      lineChart(out, [{ name: "widmo", color: "--s1", x: r.widmo.f, y: r.widmo.S }], { xlabel: "częstotliwość [Hz]", ylabel: "log10 widma", markers: r.czestotliwosci.map(f => ({ x: f, label: fmt(f, 2) })) }); }
+    else if (r.analiza === "lines") { tiles(out, [{ v: fmt(r.f0, 1) + " Hz", l: "kotwica wymuszenia f0" }, { v: fmt(r.H, 2), l: "H — linie 2f, 3f (porównuj w czasie)" }]);
+      lineChart(out, [{ name: "widmo", color: "--s1", x: r.widmo.f, y: r.widmo.S }], { xlabel: "częstotliwość [Hz]", ylabel: "log10 widma", markers: [1, 2, 3].map(k => ({ x: k * r.f0, label: k + "f" })) }); }
+    else if (r.analiza === "lines2") { tiles(out, [{ v: fmt(r.fa, 2) + " Hz", l: "mod A" }, { v: fmt(r.fb, 2) + " Hz", l: "mod B" }, { v: fmt(r.H, 2), l: "H — 2fa, 2fb, fa+fb" }]);
+      lineChart(out, [{ name: "widmo", color: "--s1", x: r.widmo.f, y: r.widmo.S }], { xlabel: "częstotliwość [Hz]", ylabel: "log10 widma", markers: [[r.fa, "fa"], [r.fb, "fb"], [2 * r.fa, "2fa"], [r.fa + r.fb, "fa+fb"]].map(([x, l]) => ({ x, label: l })) }); }
+    else tiles(out, [{ v: r.rezim, l: "reżim" }, { v: fmt(r.D, 2), l: "D — gęstość zdarzeń" }, { v: fmt(r.P, 3), l: "P — cząsteczkowość" }]);
+    out.append(el("p", { class: "note" }, "Wartości porównuj ze stanem wzorcowym tej samej konstrukcji w podobnych warunkach (temperatura!)."));
+  } catch (err) { out.replaceChildren(el("p", { class: "err" }, "Błąd: " + err.message)); }
+});
+tab("most");
+</script>
+</body>
+</html>
