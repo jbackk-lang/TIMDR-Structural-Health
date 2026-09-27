@@ -24,7 +24,10 @@ python timdr_shm.py regime   emisja.npz --fs 5e6 --band 100e3,900e3
 ## Dashboard
 
 `run.bat` (Windows) albo `python dashboard.py` → http://127.0.0.1:8765. Tylko biblioteka standardowa + numpy/scipy,
-serwer słucha wyłącznie na 127.0.0.1. Zakładki: most (kotwica modalna przed/po wzmocnieniu), śruba (linie nieliniowości
+serwer słucha wyłącznie na 127.0.0.1. Pierwsza zakładka „Jak widzi TIMDR” pokazuje inność metody na jednym sygnale krok po kroku: widmo (standard) →
+typ sygnału (obwiednia, błyski, reżim) → pole czas × pasmo → mapa rezonansu i oczka sita przy kotwicy → co przepuszcza sito,
+a co zwykła obwiednia (z obcą maszyną w tle) → zwinięcie w rurę; dla rzadkich i częstych uderzeń (w reżimie fali metoda
+zmienia drogę). Pozostałe zakładki: most (kotwica modalna przed/po wzmocnieniu), śruba (linie nieliniowości
 przy luzowaniu), uderzenia (reżim cząsteczka/pakiet/fala) — na danych syntetycznych; „Mój plik CSV” — analiza własnego
 zapisu (kolumny = kanały); „Walidacja” — tabela wyników, także negatywnych.
 

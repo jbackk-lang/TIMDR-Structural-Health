@@ -46,6 +46,13 @@ button.go{background:var(--s1);color:#fff;border:0;border-radius:8px;padding:9px
 .err{color:var(--critical);font-weight:600}
 .note{color:var(--muted);font-size:12px}
 .hidden{display:none}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:4px 0 8px}
+.seg button{background:var(--surface);color:var(--ink);border:0;padding:7px 14px;font:inherit;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--s1);color:#fff}
+.two{display:grid;grid-template-columns:5fr 2fr;gap:16px;align-items:start}
+@media (max-width:800px){.two{grid-template-columns:1fr}}
+.step{display:inline-block;min-width:22px;height:22px;border-radius:11px;background:var(--s1);color:#fff;text-align:center;font-size:12px;line-height:22px;margin-right:8px}
+.std{border-style:dashed}
 </style>
 </head>
 <body>
@@ -54,14 +61,16 @@ button.go{background:var(--s1);color:#fff;border:0;border-radius:8px;padding:9px
   <p class="sub">Monitorowanie konstrukcji: kotwica modalna, linie nieliniowości, reżim fala / cząsteczka. Wszystko liczone lokalnie.</p>
 </header>
 <nav role="tablist" id="tabs">
-  <button role="tab" data-t="most" aria-selected="true">Most: wzmocnienie</button>
+  <button role="tab" data-t="widok" aria-selected="true">Jak widzi TIMDR</button>
+  <button role="tab" data-t="most">Most: wzmocnienie</button>
   <button role="tab" data-t="sruba">Śruba: luzowanie</button>
   <button role="tab" data-t="uderzenia">Uderzenia: reżim</button>
   <button role="tab" data-t="plik">Mój plik CSV</button>
   <button role="tab" data-t="walidacja">Walidacja</button>
 </nav>
 <main>
-  <section id="p-most"></section>
+  <section id="p-widok"></section>
+  <section id="p-most" class="hidden"></section>
   <section id="p-sruba" class="hidden"></section>
   <section id="p-uderzenia" class="hidden"></section>
   <section id="p-plik" class="hidden">
@@ -157,6 +166,103 @@ function verdictBadge(v) {
 }
 async function api(url, opt) { const r = await fetch(url, opt); const j = await r.json(); if (!r.ok) throw new Error(j.blad || r.status); return j; }
 
+
+/* Mapa ciepla: jeden odcien (niebieski), jasny -> ciemny = wiecej; w trybie ciemnym odwrotnie (niska wartosc ginie w tle). */
+const RAMP_L = ["#cde2fb","#b7d3f6","#9ec5f4","#86b6ef","#6da7ec","#5598e7","#3987e5","#2a78d6","#256abf","#1c5cab","#184f95","#104281","#0d366b"];
+function heat(parent, M, rows, cols, o = {}) {
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light" || document.documentElement.dataset.theme === "dark";
+  const ramp = dark ? [...RAMP_L].reverse() : RAMP_L;
+  const W = o.w || 900, H = o.h || 240, m = { l: 90, r: 16, t: 8, b: 40 }; const nr = M.length, nc = M[0].length;
+  const all = M.flat(); const lo = o.lo ?? Math.min(...all), hi = o.hi ?? Math.max(...all);
+  const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg"); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("role", "img"); svg.setAttribute("aria-label", o.label || "mapa");
+  const add = (tag, a) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); svg.append(e); return e; };
+  const cw = (W - m.l - m.r) / nc, ch = (H - m.t - m.b) / nr;
+  for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) {
+    const q = Math.max(0, Math.min(1, (M[i][j] - lo) / (hi - lo || 1))); add("rect", { x: m.l + j * cw, y: m.t + (nr - 1 - i) * ch, width: cw + 0.5, height: ch - 1, fill: ramp[Math.round(q * (ramp.length - 1))] }); }
+  rows.forEach((r, i) => { const t = add("text", { x: m.l - 8, y: m.t + (nr - 1 - i) * ch + ch / 2 + 4, "text-anchor": "end", fill: css("--muted"), "font-size": 11 }); t.textContent = r; });
+  const ticks = o.xticks || [0, Math.floor(nc / 4), Math.floor(nc / 2), Math.floor(3 * nc / 4), nc - 1];
+  for (const j of ticks) { const t = add("text", { x: m.l + (j + 0.5) * cw, y: H - m.b + 16, "text-anchor": "middle", fill: css("--muted"), "font-size": 11 }); t.textContent = o.xfmt ? o.xfmt(cols[j]) : cols[j]; }
+  const xl = add("text", { x: (m.l + W - m.r) / 2, y: H - 6, "text-anchor": "middle", fill: css("--ink2"), "font-size": 12 }); xl.textContent = o.xlabel || "";
+  for (const mk of (o.markers || [])) { const x = m.l + (mk.j + 0.5) * cw; add("line", { x1: x, x2: x, y1: m.t, y2: H - m.b, stroke: css("--s2"), "stroke-width": 2, "stroke-dasharray": "4 3" });
+    const t = add("text", { x: x + 4, y: m.t + 12, fill: css("--ink"), "font-size": 11, "font-weight": 600 }); t.textContent = mk.label; }
+  const box = el("div", { class: "chart" }); const tip = el("div", { class: "tip" });
+  const hit = add("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent" });
+  hit.addEventListener("pointermove", ev => { const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) / r.width * W, py = (ev.clientY - r.top) / r.height * H;
+    const j = Math.min(nc - 1, Math.max(0, Math.floor((px - m.l) / cw))), i = nr - 1 - Math.min(nr - 1, Math.max(0, Math.floor((py - m.t) / ch)));
+    tip.replaceChildren(el("b", {}, fmt(M[i][j], 2)), el("div", { class: "note" }, `${rows[i]} · ${o.xfmt ? o.xfmt(cols[j]) : cols[j]}`));
+    tip.style.display = "block"; tip.style.left = Math.min((px / W) * r.width + 12, r.width - 150) + "px"; tip.style.top = ((py / H) * r.height + 12) + "px"; });
+  hit.addEventListener("pointerleave", () => tip.style.display = "none");
+  box.append(svg, tip); parent.append(box);
+}
+function hbars(parent, labels, vals, o = {}) {
+  const W = 320, rowH = 22, H = labels.length * rowH + 10, l = 76; const mx = Math.max(...vals) || 1;
+  const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg"); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("role", "img"); svg.setAttribute("aria-label", o.label || "oczka sita");
+  const add = (tag, a) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); svg.append(e); return e; };
+  [...labels].reverse().forEach((lab, k) => { const i = labels.length - 1 - k; const y = 5 + k * rowH;
+    const t = add("text", { x: l - 6, y: y + 14, "text-anchor": "end", fill: css("--muted"), "font-size": 11 }); t.textContent = lab;
+    const w = Math.max(1, (vals[i] / mx) * (W - l - 50)); add("rect", { x: l, y: y + 4, width: w, height: rowH - 8, rx: 3, fill: css("--s1") });
+    const v = add("text", { x: l + w + 6, y: y + 15, fill: css("--ink2"), "font-size": 11 }); v.textContent = fmt(vals[i], 2); });
+  const box = el("div", { class: "chart" }); box.append(svg); parent.append(box);
+}
+/* Rura: (t, Re z, Im z) w rzucie ukosnym; skora rury = +-promien (obwiednia). */
+function tube(parent, d) {
+  const W = 900, H = 260, m = 30; const n = d.t.length; const rmax = Math.max(...d.r) || 1;
+  const X = i => m + (i / (n - 1)) * (W - 2 * m), Y = (re, im) => H / 2 - (re * 0.75 + im * 0.45) / rmax * (H / 2 - 20);
+  const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg"); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("role", "img"); svg.setAttribute("aria-label", "sygnał zwinięty w rurę");
+  const add = (tag, a) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); svg.append(e); return e; };
+  const skin = s => d.r.map((r, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${(H / 2 - s * r / rmax * (H / 2 - 20) * 0.88).toFixed(1)}`).join("");
+  const band = skin(1) + d.r.map((r, i) => [i, r]).reverse().map(([i, r]) => `L${X(i).toFixed(1)},${(H / 2 + r / rmax * (H / 2 - 20) * 0.88).toFixed(1)}`).join("") + "Z";
+  const fillP = add("path", { d: band, fill: css("--s1"), "fill-opacity": 0.14, stroke: "none" });
+  add("path", { d: skin(1), fill: "none", stroke: css("--s1"), "stroke-opacity": 0.5, "stroke-width": 1 }); add("path", { d: skin(-1), fill: "none", stroke: css("--s1"), "stroke-opacity": 0.5, "stroke-width": 1 });
+  add("path", { d: d.re.map((re, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(re, d.im[i]).toFixed(1)}`).join(""), fill: "none", stroke: css("--s1"), "stroke-width": 1.5, "stroke-linejoin": "round" });
+  const t = add("text", { x: W / 2, y: H - 6, "text-anchor": "middle", fill: css("--ink2"), "font-size": 12 }); t.textContent = "czas → (0,25 s)   ·   spirala = faza sygnału, skóra rury = obwiednia";
+  const box = el("div", { class: "chart" }); box.append(svg); parent.append(box);
+}
+const WIDOK = {};
+async function drawView(kind) {
+  const host = $("#widok-body"); host.style.opacity = 0.5;
+  const d = WIDOK[kind] || (WIDOK[kind] = await api("/api/view?case=" + kind)); host.replaceChildren(); host.style.opacity = 1;
+  host.append(el("p", { class: "desc" }, d.opis));
+  const s0 = card(host, "Standard: widmo sygnału", "Tak sygnał widzi klasyczna analiza — linie i szum. Co dalej, wybiera ekspert z doświadczenia."); s0.classList.add("std");
+  lineChart(s0, [{ name: "widmo", color: "--s2", x: d.standard.f.map(v => v / 1000), y: d.standard.S }], { xlabel: "częstotliwość [kHz]", ylabel: "log10 widma", h: 200 });
+  const regName = { czasteczka: "cząsteczka", pakiet: "pakiet", fala: "fala" }[d.krok0.rezim];
+  const c1 = card(host, "");
+  c1.querySelector("h2").append(el("span", { class: "step" }, "0"), document.createTextNode("Najpierw: jaki to sygnał? Obwiednia i błyski"));
+  c1.append(el("p", { class: "desc" }, "TIMDR nie zaczyna od narzędzia, tylko od typu sygnału. Obwiednia w paśmie rezonansu: czy energia siedzi w kilku ostrych błyskach (cząsteczka), czy płynie ciągle (fala)?"));
+  lineChart(c1, [{ name: "sygnał", color: "--s2", x: d.krok0.t, y: d.krok0.x }, { name: "obwiednia 4–5 kHz", color: "--s1", x: d.krok0.t, y: d.krok0.env }],
+    { xlabel: "czas [s]", ylabel: "amplituda", h: 220, label: "sygnał i obwiednia" });
+  tiles(c1, [{ v: regName, l: "reżim → wyznacza dalszą drogę" }, { v: fmt(d.krok0.P, 2), l: "P: ile energii w 5% chwil (szum ≈ 0,2)" }, { v: fmt(d.krok0.D, 2), l: "D: gęstość zdarzeń (< 0,3 cząsteczka, > 3 fala)" }]);
+  const c2 = card(host, ""); c2.querySelector("h2").append(el("span", { class: "step" }, "1"), document.createTextNode("Pole (membrana): czas × pasmo"));
+  c2.append(el("p", { class: "desc" }, "Sygnał rozpięty na pasma nośne. Każde pasmo drga po swojemu — to jest pole, na którym szuka się rezonansu."));
+  heat(c2, d.pole.E, d.pole.pasma, d.pole.t, { xlabel: "czas [s]", xfmt: v => fmt(v, 2), label: "pole czas × pasmo" });
+  const c3 = card(host, ""); c3.querySelector("h2").append(el("span", { class: "step" }, "2"), document.createTextNode("Rezonans ustawia oczka sita (kotwica = rytm z fizyki)"));
+  c3.append(el("p", { class: "desc" }, "Mapa rezonansu: w których pasmach obwiednia pulsuje i z jakim rytmem. Przy kotwicy (rytm znany z fizyki) każde pasmo dostaje oczko proporcjonalne do swojego rezonansu — sito samo wybiera, gdzie słuchać."));
+  const two = el("div", { class: "two" }); c3.append(two); const L = el("div"), R = el("div"); two.append(L, R);
+  const jA = d.rezonans.alfa.reduce((b, v, i, a) => Math.abs(v - d.rezonans.kotwica) < Math.abs(a[b] - d.rezonans.kotwica) ? i : b, 0);
+  const jO = d.rezonans.alfa.reduce((b, v, i, a) => Math.abs(v - d.rezonans.obcy) < Math.abs(a[b] - d.rezonans.obcy) ? i : b, 0);
+  heat(L, d.rezonans.Rz, d.rezonans.pasma, d.rezonans.alfa, { w: 640, h: 280, xlabel: "rytm obwiedni α [Hz]", xfmt: v => fmt(v, 0), markers: [{ j: jA, label: "kotwica " + fmt(d.rezonans.kotwica, 0) + " Hz" }, { j: jO, label: "obca maszyna" }], label: "mapa rezonansu" });
+  R.append(el("p", { class: "note" }, "Oczka sita (wagi pasm)")); hbars(R, d.rezonans.pasma, d.rezonans.oczka);
+  const c4 = card(host, ""); c4.querySelector("h2").append(el("span", { class: "step" }, "3"), document.createTextNode("Co przepuszcza sito, a co zwykła obwiednia"));
+  c4.append(el("p", { class: "desc" }, "Ten sam sygnał: widmo obwiedni całego pasma (klasyka) i widmo po sicie. Obwiednia pełnego pasma słyszy wszystko naraz — także obcą maszynę. Sito słucha tylko pasm, które rezonują przy kotwicy, więc obcy rytm znika."));
+  lineChart(c4, [{ name: "po sicie TIMDR", color: "--s1", x: d.rezonans.alfa, y: d.rezonans.sito }, { name: "obwiednia pełnego pasma", color: "--s2", x: d.rezonans.alfa, y: d.rezonans.obwiednia }],
+    { xlabel: "rytm α [Hz]", ylabel: "log10 (tło = 0)", h: 240, markers: [{ x: d.rezonans.kotwica, label: "kotwica" }, { x: d.rezonans.obcy, label: "obca maszyna" }] });
+  if (d.krok0.rezim === "fala") c4.append(el("p", { class: "err" }, "Reżim fali: zdarzenia zlały się w ciągły rytm, sito nie ma czego przesiać (niebieska linia płaska). Tu TIMDR zmienia drogę — reguła reżimów kieruje do linii przy kotwicy modalnej (zakładki „Śruba” i „Most”). Tak było w budynku LANL: miara błysków odwróciła kierunek, linie przy kotwicy dały ρ +0,98."));
+  else c4.append(el("p", { class: "note" }, "Reżim cząsteczki: sito wzmacnia rytm kotwicy i tłumi obcą maszynę. Tak działało na łożyskach Paderborn (3 próby) i na turbinie wiatrowej."));
+  const c5 = card(host, ""); c5.querySelector("h2").append(el("span", { class: "step" }, "4"), document.createTextNode("Zwinięcie w rurę: z = x + iH[x]"));
+  c5.append(el("p", { class: "desc" }, "Pasmo rezonansu jako rura: promień = obwiednia, obrót = faza. Cząsteczki to zgrubienia rury (błyski), fala to rura równa na całej długości."));
+  tube(c5, d.rura);
+}
+async function showWidok() {
+  const p = $("#p-widok"); if (p.dataset.done) return; p.dataset.done = 1;
+  const c = card(p, "Jak TIMDR patrzy na sygnał — krok po kroku", "Ten sam sygnał (syntetyczny) oczami klasycznej analizy i oczami TIMDR. Przełącz rodzaj uderzeń i zobacz, jak zmienia się droga.");
+  const seg = el("div", { class: "seg", role: "group", "aria-label": "przypadek" });
+  for (const [k, lab] of [["rzadkie", "Rzadkie uderzenia"], ["czeste", "Częste uderzenia"]]) { const b = el("button", { "aria-pressed": k === "rzadkie" }, lab);
+    b.addEventListener("click", () => { seg.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); drawView(k); }); seg.append(b); }
+  c.append(seg); const body = el("div", { id: "widok-body" }); p.append(body); await drawView("rzadkie");
+}
 async function showMost() {
   const p = $("#p-most"); if (p.dataset.done) return; p.dataset.done = 1;
   const d = await api("/api/demo?name=most");
@@ -190,7 +296,7 @@ async function showWalidacja() {
   table(c, ["obiekt", "TIMDR", "odniesienie", "werdykt"], v.map(r => [r.obiekt, r.timdr, r.odniesienie, verdictBadge(r.werdykt)]));
   c.append(el("p", { class: "note" }, "Działa: zmiany globalnej sztywności i nieliniowość kontaktu (trend). Nie działa: lokalne uszkodzenia połączeń przy wymuszeniu szumowym."));
 }
-const SHOW = { most: showMost, sruba: showSruba, uderzenia: showUderzenia, walidacja: showWalidacja, plik: async () => {} };
+const SHOW = { widok: showWidok, most: showMost, sruba: showSruba, uderzenia: showUderzenia, walidacja: showWalidacja, plik: async () => {} };
 function tab(t) {
   for (const b of document.querySelectorAll("#tabs button")) b.setAttribute("aria-selected", b.dataset.t === t);
   for (const s of document.querySelectorAll("main > section")) s.classList.toggle("hidden", s.id !== "p-" + t);
@@ -217,7 +323,7 @@ $("#f").addEventListener("submit", async e => {
     out.append(el("p", { class: "note" }, "Wartości porównuj ze stanem wzorcowym tej samej konstrukcji w podobnych warunkach (temperatura!)."));
   } catch (err) { out.replaceChildren(el("p", { class: "err" }, "Błąd: " + err.message)); }
 });
-tab("most");
+tab("widok");
 </script>
 </body>
 </html>

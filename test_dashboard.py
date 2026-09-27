@@ -53,3 +53,11 @@ def test_analyze_csv_modes_and_errors(base):
     assert s == 200 and r["czestotliwosci"][0] == pytest.approx(2.95, abs=0.01)
     s, r = post(base + "/api/analyze", {"csv": "a,b\n1,x", "fs": 1, "analysis": "modes", "anchors": "1"})
     assert s == 400 and "blad" in r
+
+
+def test_view_regimes(base):
+    rz = json.loads(get(base + "/api/view?case=rzadkie")[1]); cz = json.loads(get(base + "/api/view?case=czeste")[1])
+    assert rz["krok0"]["rezim"] == "czasteczka" and cz["krok0"]["rezim"] == "fala"
+    w = rz["rezonans"]["oczka"]; assert w.index(max(w)) == 3            # sito wybiera pasmo rezonansu 4-5 kHz
+    al = np.array(rz["rezonans"]["alfa"]); i_o = int(np.argmin(abs(al - rz["rezonans"]["obcy"])))
+    assert rz["rezonans"]["sito"][i_o] < rz["rezonans"]["obwiednia"][i_o] - 0.5   # obca maszyna stlumiona przez sito

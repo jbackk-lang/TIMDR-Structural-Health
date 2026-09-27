@@ -84,6 +84,57 @@ def demo_uderzenia(seed=3):
     return {"typ": "uderzenia", "opis": "Syntetyczne uderzenia (zderzak, mikropoślizg): rzadkie są cząsteczkami, częste zlewają się w falę.", "przypadki": rows}
 
 
+# ---------------- "Jak widzi TIMDR": ten sam sygnal krok po kroku ----------------
+VIEW_CASES = {
+    "rzadkie": {"opis": "Rzadkie uderzenia (12 na sekundę), np. zderzak przy dużej szczelinie albo pęknięta bieżnia. W tle obca maszyna: pasmo 7–8 kHz pulsuje 37 razy na sekundę.",
+                "rate": 12.0, "decay": 14, "amax": 100.0, "obcy": 37.0},
+    "czeste": {"opis": "Częste uderzenia (400 na sekundę) — dzwonienie nie zdąży wygasnąć, zdarzenia zlewają się w ciągły rytm. W tle obca maszyna: 7–8 kHz pulsuje 150 razy na sekundę.",
+               "rate": 400.0, "decay": 60, "amax": 600.0, "obcy": 150.0},
+}
+
+
+def view_case(name: str, seed: int = 4) -> dict:
+    cfg = VIEW_CASES[name]; rng = np.random.default_rng(seed); fs = 20000.0; n = int(1.0 * fs); t = np.arange(n) / fs
+    L = 6 * cfg["decay"]; ring = np.exp(-np.arange(L) / cfg["decay"]) * np.sin(2 * np.pi * 4500 * np.arange(L) / fs)
+    imp = np.zeros(n); imp[(np.arange(0.013, 1.0, 1 / cfg["rate"]) * fs).astype(int)] = 6.0
+    x = 0.2 * rng.standard_normal(n) + np.convolve(imp, ring, "full")[:n] + 0.4 * np.sin(2 * np.pi * 180 * t)
+    x = x + 0.9 * (1 + 0.9 * np.sin(2 * np.pi * cfg["obcy"] * t)) * np.sin(2 * np.pi * 7500 * t)   # zaklocenie: obca modulacja
+    # 1) standard: widmo sygnalu
+    std = spectrum(x[None, :], fs, fs / 2, 500)
+    # 2) krok 0: obwiednia w pasmie rezonansu i blyski (5% najsilniejszych)
+    env = T.band_envelope(x, fs, 4000, 5000); reg = T.regime(x, fs, 4000, 5000)
+    m = int(0.25 * fs); thr = float(np.sort(env ** 2)[-int(0.05 * n)])
+    step = 10
+    krok0 = {"t": np.round(t[:m:step], 4).tolist(), "x": np.round(x[:m:step], 3).tolist(), "env": np.round(env[:m:step], 3).tolist(),
+             "prog": float(np.sqrt(thr)), **reg}
+    # 3) pole: czas x pasmo (log energii obwiedni), 9 pasm po 1 kHz
+    bands = [(1000.0 * i, 1000.0 * (i + 1)) for i in range(1, 10)]
+    E = np.array([T.band_envelope(x, fs, lo, hi) for lo, hi in bands])
+    fr = 100; F = np.log10((E[:, : (n // fr) * fr] ** 2).reshape(len(bands), -1, fr).mean(2) + 1e-9)
+    pole = {"pasma": [f"{int(lo / 1000)}–{int(hi / 1000)} kHz" for lo, hi in bands], "t": np.round(np.arange(F.shape[1]) * fr / fs, 3).tolist(),
+            "E": np.round(F[:, :200], 3).tolist()}
+    # 4) rezonans + sito: mapa Rz[pasmo, alfa], oczka przy kotwicy alfa = czestosc uderzen
+    a = np.fft.rfftfreq(n, 1 / fs); am = (a >= 2) & (a <= cfg["amax"]); w = np.hanning(n)
+    Rz = []
+    for e in E:
+        S = np.abs(np.fft.rfft((e - e.mean()) * w))[am]; Rz.append(S / (np.median(S) + 1e-12))
+    Rz = np.array(Rz); al = a[am]; anchor = cfg["rate"]
+    j = np.argmin(np.abs(al - anchor)); wts = np.clip(Rz[:, j] - 1, 0, None); wts = wts / wts.sum() if wts.sum() > 0 else np.full(len(wts), 1 / len(wts))
+    sito = wts @ Rz
+    full = T.band_envelope(x, fs, 1000, 10000); Sf = np.abs(np.fft.rfft((full - full.mean()) * w))[am]; Sf = Sf / np.median(Sf)
+    idx = np.linspace(0, len(al) - 1, 400).astype(int)
+    rez = {"pasma": pole["pasma"], "alfa": np.round(al[idx], 2).tolist(), "Rz": np.round(np.log10(Rz[:, idx] + 1e-9), 3).tolist(),
+           "kotwica": anchor, "obcy": cfg["obcy"], "oczka": np.round(wts, 4).tolist(),
+           "sito": np.round(np.log10(sito[idx]), 3).tolist(), "obwiednia": np.round(np.log10(Sf[idx]), 3).tolist()}
+    # 5) rura: sygnal analityczny pasma rezonansu przesuniety do 30 Hz nad srodek pasma -> (t, Re, Im)
+    X = np.fft.fft(x); f = np.fft.fftfreq(n, 1 / fs); Z = np.where((f >= 4000) & (f < 5000), 2 * X, 0)
+    z = np.fft.ifft(Z) * np.exp(-2j * np.pi * 4470 * t)
+    k = int(0.25 * fs); zz = z[:k:25]
+    rura = {"t": np.round(t[:k:25], 4).tolist(), "re": np.round(zz.real, 3).tolist(), "im": np.round(zz.imag, 3).tolist(),
+            "r": np.round(np.abs(zz), 3).tolist()}
+    return {"przypadek": name, "opis": cfg["opis"], "fs": fs, "standard": std, "krok0": krok0, "pole": pole, "rezonans": rez, "rura": rura}
+
+
 DEMOS = {"most": demo_most, "sruba": demo_sruba, "uderzenia": demo_uderzenia}
 
 
@@ -124,6 +175,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, (STATIC / "dashboard.html").read_bytes(), "text/html; charset=utf-8")
         if u.path == "/api/validation":
             return self._send(200, VALIDATION)
+        if u.path == "/api/view":
+            name = parse_qs(u.query).get("case", ["rzadkie"])[0]
+            if name not in VIEW_CASES:
+                return self._send(404, {"blad": "nieznany przypadek"})
+            return self._send(200, view_case(name))
         if u.path == "/api/demo":
             name = parse_qs(u.query).get("name", ["most"])[0]
             if name not in DEMOS:
