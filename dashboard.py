@@ -32,8 +32,10 @@ VALIDATION = [
      "odniesienie": "klasyczne SHM 0,97", "werdykt": "SUPPORTED"},
     {"obiekt": "Połączenie śrubowe ORION-AE, luzowanie 60 → 5 cNm", "timdr": "linie przy kotwicy: ρ −0,85 / −0,64; reżim cząsteczki przy średnim luzie",
      "odniesienie": "dokładny poziom: TIMDR 0,18, klasyka 0,04 (obie losowo)", "werdykt": "SUPPORTED (trend)"},
-    {"obiekt": "Most Hell Bridge Test Arena, 8 lokalnych uszkodzeń", "timdr": "kotwica + kształt modu: AUC 0,65",
+    {"obiekt": "Most Hell Bridge Test Arena, 8 lokalnych uszkodzeń", "timdr": "sama kotwica + kształt bez fazy: AUC 0,65",
      "odniesienie": "AR 0,79", "werdykt": "NOT SUPPORTED"},
+    {"obiekt": "Most Hell Bridge — przerwa ciągłości (K → G → M/S)", "timdr": "uszkodzenia pionowe 0,93–0,94 (każde ≥ AR); średnio 0,80",
+     "odniesienie": "AR 0,80 (stężeń nie widać w czujnikach pionowych)", "werdykt": "SUPPORTED (pionowe; średnio remis)"},
 ]
 
 

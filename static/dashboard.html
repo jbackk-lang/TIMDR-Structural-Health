@@ -294,7 +294,7 @@ async function showWalidacja() {
   const p = $("#p-walidacja"); if (p.dataset.done) return; p.dataset.done = 1;
   const v = await api("/api/validation"); const c = card(p, "Walidacja pre-rejestrowana (GIA-TIMDR), także wyniki negatywne");
   table(c, ["obiekt", "TIMDR", "odniesienie", "werdykt"], v.map(r => [r.obiekt, r.timdr, r.odniesienie, verdictBadge(r.werdykt)]));
-  c.append(el("p", { class: "note" }, "Działa: zmiany globalnej sztywności i nieliniowość kontaktu (trend). Nie działa: lokalne uszkodzenia połączeń przy wymuszeniu szumowym."));
+  c.append(el("p", { class: "note" }, "Działa: zmiany globalnej sztywności, nieliniowość kontaktu (trend) i lokalne uszkodzenia jako przerwa ciągłości kształtu modu (z fazą). Nie działa: sama kotwica na lokalne uszkodzenia; stężenia poprzeczne przy czujnikach pionowych."));
 }
 const SHOW = { widok: showWidok, most: showMost, sruba: showSruba, uderzenia: showUderzenia, walidacja: showWalidacja, plik: async () => {} };
 function tab(t) {

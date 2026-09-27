@@ -61,3 +61,45 @@ def test_golden_lines_and_regime_against_gia_timdr():
     assert T.lines_known_excitation(T._decim(v, 1000), fs5 / 1000)["H"] == pytest.approx(-5.701713483452477, abs=1e-12)
     r = T.regime(a, fs5, 100e3, 900e3)
     assert r["P"] == pytest.approx(0.35500346588028664, abs=1e-12) and r["D"] == pytest.approx(1.8231072796741294, abs=1e-12)
+
+
+# ---------------- przerwa ciaglosci (K -> G -> M/S) ----------------
+ANCH_HBTA = [6.86, 7.42, 17.26, 24.12, 30.08, 32.32]
+
+
+def _grid_bridge(seed=21, damage=0.0):
+    """40 kanalow = 4 linie x 10 punktow (rozstaw 3,5 m), wymuszenie szumem; damage -> zalamanie ksztaltu w punkcie 4 linii 1."""
+    rng = np.random.default_rng(seed); fs = 100.0; n = 6000; a = rng.standard_normal(n)
+    xpos = np.arange(10) * 3.5; X = np.zeros((40, n))
+    for k, f0 in enumerate(ANCH_HBTA):
+        mode = np.sin((k % 3 + 1) * np.pi * (xpos + 1.75) / 35.0)
+        drive = np.convolve(a, np.exp(-np.arange(200) / 60) * np.sin(2 * np.pi * f0 * np.arange(200) / fs), "same")
+        for line in range(4):
+            m = mode * (1 + 0.1 * line)
+            if line == 1 and damage:
+                m = m.copy(); m[4] += damage
+            X[line * 10:(line + 1) * 10] += np.outer(m, drive)
+    return X + 0.05 * rng.standard_normal(X.shape), a, fs
+
+
+def test_mode_shapes_golden_against_gia_timdr():
+    # GIA-TIMDR core/hbta_modal_curvature.window_shapes na tym samym sygnale (anchors jak tam: 8 kotwic v0.1)
+    X, a, fs = _grid_bridge()
+    m = T.mode_shapes(X, a, fs, [6.86, 7.42, 9.40, 12.79, 17.26, 24.12, 30.08, 32.32])
+    assert m[0][:4] == pytest.approx([-0.04318594037, -0.121734126991, -0.178025679198, -0.203782262091], abs=1e-10)
+    A1, C1 = T.discontinuity_maps(m[1], np.arange(40).reshape(4, 10))
+    assert float(A1.sum()) == pytest.approx(-0.003783981314716984, abs=1e-12)
+    assert float(C1.sum()) == pytest.approx(-0.04165072278566179, abs=1e-12)
+
+
+def test_discontinuity_flags_local_kink():
+    grid = np.arange(40).reshape(4, 10)
+    train = [T.mode_shapes(*_grid_bridge(seed=s)[:2], 100.0, ANCH_HBTA) for s in range(30, 42)]
+    B = T.DiscontinuityBaseline(train, grid)
+    healthy = [T.mode_shapes(*_grid_bridge(seed=s)[:2], 100.0, ANCH_HBTA) for s in range(50, 54)]
+    broken = [T.mode_shapes(*_grid_bridge(seed=s, damage=0.4)[:2], 100.0, ANCH_HBTA) for s in range(50, 54)]
+    Ftr, Fh, Fb = B.features(train), B.features(healthy), B.features(broken)
+    assert T.novelty(Ftr, Fb).min() > T.novelty(Ftr, Fh).max()          # zalamanie ksztaltu wykryte
+    za, zc = B.z_maps(broken)
+    line, pt = np.unravel_index(int(np.argmax(zc.mean((0, 1)))), zc.shape[2:])
+    assert line in (0, 1) and pt == 4                                    # i wskazane miejsce: linia 1, punkt 4

@@ -8,6 +8,8 @@
 #                                     core/orion_bolt.py             (sruba ORION-AE: rho -0,85 / -0,64)
 #   rezim: czasteczkowosc P, D     -- core/transition_params.py, core/orion_bolt.py
 #   detektor nowosci kNN           -- core/real_lanl_3story_bridge.py
+#   przerwa ciaglosci (K->G->M/S)  -- core/hbta_modal_curvature.py (window_shapes), core/hbta_discontinuity.py
+#                                     (most Hell Bridge: uszkodzenia pionowe AUC 0,93-0,94, kazde >= AR; stezenia niewidoczne)
 #
 # Uzycie (CLI):
 #   python timdr_shm.py modes    plik.npz --fs 825.8 --anchors 2.58,2.92,5.32 [--decimate 32]
@@ -61,6 +63,65 @@ def novelty(train: np.ndarray, test: np.ndarray, k: int = 3, loo: bool = False) 
     if loo:
         np.fill_diagonal(D, np.inf)
     return np.sort(D, 1)[:, :k].mean(1)
+
+
+# ---------------- przerwa ciaglosci: K (kotwica + faza) -> G (ksztalt modu) -> M/S (skok w przestrzeni) ----------------
+def mode_shapes(X: np.ndarray, ref: np.ndarray, fs: float, anchors: Sequence[float], nperseg: int = 2048) -> np.ndarray:
+    """Ksztalty modow z faza: H_i = S_i,ref / S_ref,ref przy kotwicy (samokorekta +-4%), obrot do osi rzeczywistej
+    (theta = arg(sum H^2)/2), psi = Re(H e^{-i theta}), znormalizowane. ref: sila lub przyspieszenie wzbudnika
+    (albo kanal odniesienia). Zwraca (kotwice, kanaly)."""
+    from scipy.signal import csd
+    X = np.atleast_2d(X); Xc = X - X.mean(1, keepdims=True); r = ref - ref.mean()
+    f, Prr = welch(r, fs, nperseg=nperseg); _, P = welch(Xc, fs, nperseg=nperseg)
+    S = (P / np.median(P, 1, keepdims=True)).mean(0); _, Sxr = csd(Xc, r[None, :], fs, nperseg=nperseg)
+    out = []
+    for a in anchors:
+        m = np.where(np.abs(f - a) <= TOL * a)[0]; j = m[np.argmax(S[m])]
+        H = Sxr[:, j] / (Prr[j] + 1e-30); th = 0.5 * np.angle(np.sum(H ** 2)); psi = np.real(H * np.exp(-1j * th))
+        out.append(psi / (np.linalg.norm(psi) + 1e-30))
+    return np.array(out)
+
+
+def align_signs(shapes: np.ndarray, reference: np.ndarray) -> np.ndarray:
+    """Znak kazdego ksztaltu zgodny z ksztaltem wzorcowym (ksztalt modu ma znak umowny)."""
+    s = shapes.copy()
+    for k in range(len(s)):
+        if np.dot(s[k], reference[k]) < 0:
+            s[k] = -s[k]
+    return s
+
+
+def discontinuity_maps(shape: np.ndarray, grid: np.ndarray):
+    """grid: (linie, punkty wzdluz, rowny rozstaw) indeksy kanalow. Zwraca:
+    wzdluz  -- odchylka punktu od kubicznej interpolacji z sasiadow i+-1, i+-2 (gapped smoothing);
+    w poprzek -- roznica ksztaltu miedzy sasiednimi liniami w tym samym punkcie (zerwana wspolbieznosc)."""
+    G = shape[grid]
+    along = G[:, 2:-2] - (-G[:, :-4] + 4 * G[:, 1:-3] + 4 * G[:, 3:-1] - G[:, 4:]) / 6
+    return along, G[1:, :] - G[:-1, :]
+
+
+class DiscontinuityBaseline:
+    """Stan wzorcowy map przerw (mediana/MAD po oknach uczacych). features() = MAKSIMUM |z| po polozeniach dla kazdej
+    kotwicy (osobliwosc, nie suma) -- wektor 2 x liczba kotwic do detektora novelty()."""
+
+    def __init__(self, shapes_train: Sequence[np.ndarray], grid: np.ndarray):
+        self.grid = grid; self.ref = np.mean(shapes_train, 0)
+        A, C = self._maps([align_signs(s, self.ref) for s in shapes_train])
+        self.stats = [(np.median(M, 0), 1.4826 * np.median(np.abs(M - np.median(M, 0)), 0) + 1e-9) for M in (A, C)]
+
+    def _maps(self, shapes):
+        A, C = [], []
+        for sh in shapes:
+            m = [discontinuity_maps(sh[k], self.grid) for k in range(len(sh))]; A.append([x[0] for x in m]); C.append([x[1] for x in m])
+        return np.array(A), np.array(C)
+
+    def z_maps(self, shapes: Sequence[np.ndarray]):
+        A, C = self._maps([align_signs(s, self.ref) for s in shapes])
+        return [np.abs((M - med) / mad) for M, (med, mad) in zip((A, C), self.stats)]
+
+    def features(self, shapes: Sequence[np.ndarray]) -> np.ndarray:
+        za, zc = self.z_maps(shapes); n, K = za.shape[:2]
+        return np.hstack([za.reshape(n, K, -1).max(2), zc.reshape(n, K, -1).max(2)])
 
 
 # ---------------- linie przy kotwicy: nieliniowosc kontaktu (luz, zderzak, sruba) ----------------
