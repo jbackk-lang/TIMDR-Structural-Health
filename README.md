@@ -1,5 +1,9 @@
 # TIMDR-Structural-Health
 
+<!-- TIMDR HUB LINKS -->
+> **Ekosystem TIMDR:** [Knowledge Hub — dokumentacja i wyszukiwarka](https://jbackk-lang.github.io/TIMDR-AI-Knowledge-Base/) · [Panel badawczy](https://jbackk-lang.github.io/) · [GIA-TIMDR — źródła](https://github.com/jbackk-lang/GIA-TIMDR) · [Research AI — lokalne wyszukiwanie semantyczne](https://github.com/jbackk-lang/TIMDR-AI-Knowledge-Base). Publiczna wyszukiwarka Huba jest tekstowa; semantyczna wymaga lokalnego uruchomienia.
+<!-- /TIMDR HUB LINKS -->
+
 Monitorowanie konstrukcji — budynków, mostów, połączeń śrubowych — metodami zbudowanymi według drogowskazów TIMDR
 (rama opisu sygnałów, repozytorium [GIA-TIMDR](https://github.com/jbackk-lang/GIA-TIMDR)). Jeden plik `timdr_shm.py`,
 tylko numpy/scipy, testy wzorcowe zgodne 1:1 z wersjami walidowanymi.
